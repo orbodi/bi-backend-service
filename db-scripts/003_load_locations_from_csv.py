@@ -124,6 +124,22 @@ def main() -> int:
             # 1) Structure checks
             cur.execute(
                 """
+                SELECT EXISTS (
+                    SELECT 1
+                    FROM information_schema.tables
+                    WHERE table_schema = 'bi'
+                      AND table_name = 'location'
+                )
+                """
+            )
+            location_exists = bool(cur.fetchone()[0])
+            if not location_exists:
+                raise RuntimeError(
+                    "Table bi.location not found. Run db-scripts/001_bi_schema_locations.sql first."
+                )
+
+            cur.execute(
+                """
                 SELECT column_name
                 FROM information_schema.columns
                 WHERE table_schema = 'bi'
