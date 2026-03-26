@@ -5,6 +5,35 @@ import sys
 from typing import Dict, List
 
 
+def load_dotenv_file(dotenv_path: str) -> None:
+    if not os.path.isfile(dotenv_path):
+        return
+    with open(dotenv_path, "r", encoding="utf-8") as f:
+        for raw_line in f:
+            line = raw_line.strip()
+            if not line or line.startswith("#"):
+                continue
+            if "=" not in line:
+                continue
+            key, value = line.split("=", 1)
+            key = key.strip()
+            value = value.strip().strip("'").strip('"')
+            # Do not override explicit env vars already set.
+            os.environ.setdefault(key, value)
+
+
+def load_dotenv() -> None:
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    cwd = os.getcwd()
+    candidates = [
+        os.path.join(script_dir, ".env"),
+        os.path.join(script_dir, "..", ".env"),
+        os.path.join(cwd, ".env"),
+    ]
+    for path in candidates:
+        load_dotenv_file(os.path.abspath(path))
+
+
 def require_env(name: str) -> str:
     v = os.environ.get(name)
     if not v:
@@ -25,6 +54,8 @@ def validate_csv_columns(csv_path: str, required: List[str]) -> None:
 
 
 def main() -> int:
+    load_dotenv()
+
     parser = argparse.ArgumentParser(
         description="Load locations (region->center) from a CSV into bi.location."
     )
