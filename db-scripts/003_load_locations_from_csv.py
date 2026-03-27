@@ -140,6 +140,11 @@ def main() -> int:
     parser.add_argument("--csv", required=True, help="Path to CSV file")
     parser.add_argument("--lang", default="fra", help="Language code: fra or eng (default: fra)")
     parser.add_argument(
+        "--no-schema-sync",
+        action="store_true",
+        help="Skip automatic bi.locations schema sync (useful when not table owner).",
+    )
+    parser.add_argument(
         "--dry-run",
         action="store_true",
         help="Only validate CSV + DB structure; do not copy/execute loader.",
@@ -261,8 +266,9 @@ def main() -> int:
                 print("Dry-run OK: CSV columns and bi structure look compatible.")
                 return 0
 
-            # 2) Ensure staging exists (same schema as SQL loader)
-            ensure_locations_table_schema(cur)
+            # 2) Optional schema sync for bi.locations (can require table ownership)
+            if not args.no_schema_sync:
+                ensure_locations_table_schema(cur)
 
             cur.execute(
                 """
