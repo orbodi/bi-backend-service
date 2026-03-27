@@ -71,11 +71,13 @@ CREATE INDEX IF NOT EXISTS ix_location_active_lang
 -- ---------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS bi.locations (
   center_code           VARCHAR(64) PRIMARY KEY,
-  center_code_short     VARCHAR(32),
   center_name           VARCHAR(512) NOT NULL,
-  location_code         VARCHAR(64) NOT NULL,
+  locality_code         VARCHAR(64) NOT NULL,
   lang_code             VARCHAR(3) NOT NULL DEFAULT 'fra',
   region_code           VARCHAR(32),
+  prefecture_code       VARCHAR(64),
+  commune_code          VARCHAR(64),
+  canton_code           VARCHAR(64),
   region_name           VARCHAR(128),
   prefecture_name       VARCHAR(128),
   commune_name          VARCHAR(128),
@@ -85,7 +87,7 @@ CREATE TABLE IF NOT EXISTS bi.locations (
   created_at            TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at            TIMESTAMP(6),
   CONSTRAINT fk_locations_locality
-    FOREIGN KEY (location_code, lang_code)
+    FOREIGN KEY (locality_code, lang_code)
     REFERENCES bi.location (code, lang_code)
     DEFERRABLE INITIALLY DEFERRED
 );
@@ -97,7 +99,7 @@ CREATE INDEX IF NOT EXISTS ix_locations_prefecture
   ON bi.locations (prefecture_name);
 
 CREATE INDEX IF NOT EXISTS ix_locations_location_code
-  ON bi.locations (location_code);
+  ON bi.locations (locality_code);
 
 -- ---------------------------------------------------------------------------
 -- Données de référence des niveaux (aligné MOSIP master.loc_hierarchy_list)

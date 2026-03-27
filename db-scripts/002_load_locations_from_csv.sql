@@ -289,17 +289,20 @@ BEGIN
 
   -- Centres dans bi.locations (table BI consommation)
   INSERT INTO bi.locations (
-    center_code, center_code_short, center_name, location_code, lang_code,
-    region_code, region_name, prefecture_name, commune_name, canton_name, locality_name,
+    center_code, center_name, locality_code, lang_code,
+    region_code, prefecture_code, commune_code, canton_code,
+    region_name, prefecture_name, commune_name, canton_name, locality_name,
     is_active, updated_at
   )
   SELECT DISTINCT
     c.code_centres AS center_code,
-    NULLIF(c.code_centres, '') AS center_code_short,
     c.centres AS center_name,
-    c.locationcode AS location_code,
+    c.locationcode AS locality_code,
     p_lang_code AS lang_code,
     c.code_region AS region_code,
+    pm.code AS prefecture_code,
+    cm.code AS commune_code,
+    cn.code AS canton_code,
     c.region AS region_name,
     c.prefecture AS prefecture_name,
     c.commune AS commune_name,
@@ -308,13 +311,27 @@ BEGIN
     TRUE,
     CURRENT_TIMESTAMP AS updated_at
   FROM tmp_center_lkp c
+  JOIN tmp_prefecture_map pm
+    ON pm.code_region = c.code_region
+   AND pm.prefecture = c.prefecture
+  JOIN tmp_commune_map cm
+    ON cm.code_region = c.code_region
+   AND cm.prefecture = c.prefecture
+   AND cm.commune = c.commune
+  JOIN tmp_canton_map cn
+    ON cn.code_region = c.code_region
+   AND cn.prefecture = c.prefecture
+   AND cn.commune = c.commune
+   AND cn.canton = c.canton
   ON CONFLICT (center_code)
   DO UPDATE SET
-    center_code_short = EXCLUDED.center_code_short,
     center_name = EXCLUDED.center_name,
-    location_code = EXCLUDED.location_code,
+    locality_code = EXCLUDED.locality_code,
     lang_code = EXCLUDED.lang_code,
     region_code = EXCLUDED.region_code,
+    prefecture_code = EXCLUDED.prefecture_code,
+    commune_code = EXCLUDED.commune_code,
+    canton_code = EXCLUDED.canton_code,
     region_name = EXCLUDED.region_name,
     prefecture_name = EXCLUDED.prefecture_name,
     commune_name = EXCLUDED.commune_name,

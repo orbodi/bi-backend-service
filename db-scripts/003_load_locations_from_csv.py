@@ -53,6 +53,84 @@ def validate_csv_columns(csv_path: str, required: List[str]) -> None:
             )
 
 
+def ensure_locations_table_schema(cur) -> None:
+    """
+    Align bi.locations with the current target model.
+    Safe to run multiple times.
+    """
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS bi.locations (
+          center_code           VARCHAR(64) PRIMARY KEY,
+          center_name           VARCHAR(512) NOT NULL,
+          locality_code         VARCHAR(64) NOT NULL,
+          lang_code             VARCHAR(3) NOT NULL DEFAULT 'fra',
+          region_code           VARCHAR(32),
+          prefecture_code       VARCHAR(64),
+          commune_code          VARCHAR(64),
+          canton_code           VARCHAR(64),
+          region_name           VARCHAR(128),
+          prefecture_name       VARCHAR(128),
+          commune_name          VARCHAR(128),
+          canton_name           VARCHAR(128),
+          locality_name         VARCHAR(128),
+          is_active             BOOLEAN NOT NULL DEFAULT TRUE,
+          created_at            TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updated_at            TIMESTAMP(6),
+          CONSTRAINT fk_locations_locality
+            FOREIGN KEY (locality_code, lang_code)
+            REFERENCES bi.location (code, lang_code)
+            DEFERRABLE INITIALLY DEFERRED
+        )
+        """
+    )
+
+    # Legacy column rename (old model)
+    cur.execute(
+        """
+        DO $$
+        BEGIN
+          IF EXISTS (
+            SELECT 1
+            FROM information_schema.columns
+            WHERE table_schema='bi' AND table_name='locations' AND column_name='location_code'
+          ) AND NOT EXISTS (
+            SELECT 1
+            FROM information_schema.columns
+            WHERE table_schema='bi' AND table_name='locations' AND column_name='locality_code'
+          ) THEN
+            ALTER TABLE bi.locations RENAME COLUMN location_code TO locality_code;
+          END IF;
+        END $$;
+        """
+    )
+
+    # Add missing columns from current model.
+    cur.execute(
+        """
+        ALTER TABLE bi.locations
+          ADD COLUMN IF NOT EXISTS prefecture_code VARCHAR(64),
+          ADD COLUMN IF NOT EXISTS commune_code VARCHAR(64),
+          ADD COLUMN IF NOT EXISTS canton_code VARCHAR(64),
+          ADD COLUMN IF NOT EXISTS locality_code VARCHAR(64),
+          ADD COLUMN IF NOT EXISTS center_name VARCHAR(512),
+          ADD COLUMN IF NOT EXISTS lang_code VARCHAR(3) DEFAULT 'fra'
+        """
+    )
+
+    # Drop deprecated column if present.
+    cur.execute("ALTER TABLE bi.locations DROP COLUMN IF EXISTS center_code_short")
+
+    # Keep index name stable while switching to locality_code.
+    cur.execute("DROP INDEX IF EXISTS bi.ix_locations_location_code")
+    cur.execute(
+        """
+        CREATE INDEX IF NOT EXISTS ix_locations_location_code
+          ON bi.locations (locality_code)
+        """
+    )
+
+
 def main() -> int:
     load_dotenv()
 
@@ -184,6 +262,8 @@ def main() -> int:
                 return 0
 
             # 2) Ensure staging exists (same schema as SQL loader)
+            ensure_locations_table_schema(cur)
+
             cur.execute(
                 """
                 CREATE TABLE IF NOT EXISTS bi.stg_locations_csv (
@@ -214,6 +294,23 @@ def main() -> int:
                 cur.copy_expert(copy_sql, f)
 
             # 4) Call the SQL loader function
+            cur.execute(
+                """
+                SELECT EXISTS (
+                    SELECT 1
+                    FROM pg_proc p
+                    JOIN pg_namespace n ON n.oid = p.pronamespace
+                    WHERE n.nspname = 'bi'
+                      AND p.proname = 'load_locations_from_staging'
+                )
+                """
+            )
+            if not bool(cur.fetchone()[0]):
+                raise RuntimeError(
+                    "Function bi.load_locations_from_staging not found. "
+                    "Run db-scripts/002_load_locations_from_csv.sql first."
+                )
+
             cur.execute("SELECT * FROM bi.load_locations_from_staging(%s)", (args.lang,))
             loaded = cur.fetchone()
 
