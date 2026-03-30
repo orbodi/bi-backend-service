@@ -5,6 +5,8 @@
 -- ---------------------------------------------------------------------------
 -- 1) Recréer la MV avec kpi_date::date
 -- ---------------------------------------------------------------------------
+DROP VIEW IF EXISTS bi.v_print_orders_daily_geo;
+DROP VIEW IF EXISTS bi.v_print_kpis_daily;
 DROP MATERIALIZED VIEW IF EXISTS bi.mv_idps_print_orders_daily_center_status;
 
 CREATE MATERIALIZED VIEW bi.mv_idps_print_orders_daily_center_status AS
