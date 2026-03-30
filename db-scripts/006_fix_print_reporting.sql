@@ -9,29 +9,31 @@ DROP VIEW IF EXISTS bi.v_print_orders_daily_geo;
 DROP VIEW IF EXISTS bi.v_print_kpis_daily;
 DROP MATERIALIZED VIEW IF EXISTS bi.mv_idps_print_orders_daily_center_status;
 
+-- generate_series(date, date, interval) renvoie des DATE (pas timestamp).
+-- Les casts ::date sur timestamptz utilisent le fuseau de la session.
 CREATE MATERIALIZED VIEW bi.mv_idps_print_orders_daily_center_status AS
 WITH expanded AS (
   SELECT
-    gs.day::date AS kpi_date,
+    gs.kpi_date AS kpi_date,
     i.request_id,
     i.destination_code AS center_code,
     i.status_final
   FROM bi.v_idps_request_status_intervals i
   CROSS JOIN LATERAL generate_series(
-    (i.valid_from_ts)::date::timestamp,
+    (i.valid_from_ts)::date,
     (
       COALESCE(i.valid_to_ts_exclusive, now()) - interval '1 microsecond'
-    )::date::timestamp,
+    )::date,
     interval '1 day'
-  ) AS gs(day)
+  ) AS gs(kpi_date)
 )
 SELECT
-  e.kpi_date::date AS kpi_date,
+  e.kpi_date,
   e.center_code,
   e.status_final,
   count(*)::bigint AS request_count
 FROM expanded e
-GROUP BY e.kpi_date::date, e.center_code, e.status_final;
+GROUP BY e.kpi_date, e.center_code, e.status_final;
 
 CREATE INDEX IF NOT EXISTS ix_mv_print_daily_center_status_date
   ON bi.mv_idps_print_orders_daily_center_status (kpi_date);
