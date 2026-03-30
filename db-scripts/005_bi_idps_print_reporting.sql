@@ -116,11 +116,10 @@ WITH expanded AS (
     SELECT GREATEST(0::integer, cal.end_cal_day - cal.start_cal_day) AS day_span
     FROM (
       SELECT
-        CAST(
-          COALESCE(i.valid_to_ts_exclusive, now()) - interval '1 microsecond'
-          AS date
-        ) AS end_cal_day,
-        CAST(i.valid_from_ts AS date) AS start_cal_day
+        (
+          (COALESCE(i.valid_to_ts_exclusive, now()) - interval '1 microsecond')
+        )::date AS end_cal_day,
+        (i.valid_from_ts)::date AS start_cal_day
     ) cal
   ) bounds
   CROSS JOIN LATERAL generate_series(0, bounds.day_span, 1) AS gs(n)
