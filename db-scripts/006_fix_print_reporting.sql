@@ -1,6 +1,10 @@
 -- Correctifs reporting impressions:
 -- 1) kpi_date au type DATE (et non timestamp)
 -- 2) mapping centre via zéro-padding: lpad(bi.locations.center_code, 9, '0')
+--
+-- IMPORTANT: un simple REFRESH MATERIALIZED VIEW ne change JAMAIS les types
+-- des colonnes. Si kpi_date a été créée une fois en timestamp, il faut
+-- DROP + CREATE (ce script) — pas seulement REFRESH.
 
 -- ---------------------------------------------------------------------------
 -- 1) Recréer la MV avec kpi_date::date
