@@ -14,26 +14,24 @@ DROP VIEW IF EXISTS bi.v_print_kpis_daily;
 DROP MATERIALIZED VIEW IF EXISTS bi.mv_idps_print_orders_daily_center_status;
 
 -- Grain JOUR en type DATE garanti : date + integer → DATE (pas generate_series
--- avec interval, qui peut retomber sur une surcharge TIMESTAMP selon les versions).
+-- avec interval). Le nombre de jours doit être un entier explicite : sinon
+-- GREATEST(0, …) peut voir un timestamp::date - … résolu en interval (timestamp - date).
 CREATE MATERIALIZED VIEW bi.mv_idps_print_orders_daily_center_status AS
 WITH expanded AS (
   SELECT
-    (CAST(i.valid_from_ts AS date) + gs.n) AS kpi_date,
+    (i.valid_from_ts::date + gs.n) AS kpi_date,
     i.request_id,
     i.destination_code AS center_code,
     i.status_final
   FROM bi.v_idps_request_status_intervals i
-  CROSS JOIN LATERAL generate_series(
-    0,
-    GREATEST(
-      0,
-      CAST(
-        COALESCE(i.valid_to_ts_exclusive, now()) - interval '1 microsecond'
-        AS date
-      ) - CAST(i.valid_from_ts AS date)
-    ),
-    1
-  ) AS gs(n)
+  CROSS JOIN LATERAL (
+    SELECT GREATEST(
+      0::integer,
+      (COALESCE(i.valid_to_ts_exclusive, now()) - interval '1 microsecond')::date
+        - (i.valid_from_ts::date)
+    ) AS day_span
+  ) bounds
+  CROSS JOIN LATERAL generate_series(0, bounds.day_span, 1) AS gs(n)
 )
 SELECT
   e.kpi_date,
