@@ -1,0 +1,127 @@
+================================================================================
+SPECIFICATION BI — KPI IDPS (MosIP, impressions, erreurs)
+================================================================================
+Document de reprise de discussion. Dernière évolution : cadrage validé avec
+l'équipe / le référentiel métier ; remplace les anciennes vues POC (005-008)
+pour la partie logique KPI IDPS décrite ici.
+
+Fichiers associés dans le dépôt :
+  - db-scripts/validate_idps_kpi_spec.sql  — requêtes de validation contre la base
+
+--------------------------------------------------------------------------------
+1. CONTEXTE OPÉRATIONNEL
+--------------------------------------------------------------------------------
+
+- Un seul MosIP.
+- La journée d'activité est clôturée ; ensuite les fichiers sont envoyés et
+  persistés en base (idps.workflow_events, idps.error_events).
+- Les KPI s'appuient sur les colonnes event_timestamp (timestamptz). ingested_at
+  peut être postérieur à la clôture : il indique le chargement, pas la journée
+  d'activité pour le classement des KPI (sauf décision contraire future).
+
+- Pas de rejeu du même fichier : pas de règle de dédoublonnage BI spécifique
+  pour l'instant ; les comptages reflètent les lignes présentes en base.
+
+--------------------------------------------------------------------------------
+2. JOURNÉE J (RÉFÉRENCE TEMPORELLE)
+--------------------------------------------------------------------------------
+
+- Journée calendaire = date UTC dérivée de event_timestamp :
+    (event_timestamp AT TIME ZONE 'UTC')::date
+- Même règle pour workflow_events et error_events (cohérence).
+
+--------------------------------------------------------------------------------
+3. VALEURS ÉNUMÉRÉES EN BASE (CONFIRMÉES)
+--------------------------------------------------------------------------------
+
+idps.workflow_events.status (uniquement) :
+  - BACKLOG   — attente / file
+  - FINISH    — terminé avec succès (pour le sens « dernier état du jour »)
+
+idps.error_events.error_category (uniquement) :
+  - QC_ERROR
+  - SUP_ERROR
+  - PERSO_ERROR   (personnalisation)
+
+--------------------------------------------------------------------------------
+4. KPI — ORDRES REÇUS DEPUIS MosIP
+--------------------------------------------------------------------------------
+
+- Clé : request_id.
+- Définition : première apparition du request_id dans le système, soit la date
+  UTC (cf. section 2) du MIN(event_timestamp) sur l'ensemble des lignes
+  idps.workflow_events pour ce request_id.
+- Comptage le jour J : nombre de request_id distincts dont cette première
+  date vaut J.
+- Réinjection : nouvelles lignes avec le même request_id ne re-comptent PAS
+  « ordre reçu MosIP » les jours suivants (déjà compté au premier jour).
+
+Grain optionnel par centre : répartition des « ordres reçus le jour J » selon
+la destination_code du PREMIER événement (première ligne chronologique,
+tie-breaker id croissant si besoin).
+
+--------------------------------------------------------------------------------
+5. KPI — ÉTAT WORKFLOW EN « FIN DE JOURNÉE » POUR LE JOUR J
+--------------------------------------------------------------------------------
+
+- Uniquement les request_id qui ont AU MOINS un événement workflow dont la
+  date UTC (section 2) vaut J.
+- Pour chacun de ces request_id : prendre le DERNIER événement de ce jour-là
+  (ORDER BY event_timestamp DESC, id DESC pour départager les ex-aequo).
+- Le statut de cet événement est BACKLOG ou FINISH (les seuls en base).
+- Agrégats : comptage par statut (nombre de request_id en BACKLOG vs FINISH
+  à fin J au sens ci-dessus).
+
+Note : ce n'est pas un stock « hérité » de J-1 si le request_id n'a aucun
+événement le jour J : il n'entre pas dans ces compteurs pour le jour J.
+
+--------------------------------------------------------------------------------
+6. KPI — ERREURS (QC, SUP, PERSO) SUR LA JOURNÉE J
+--------------------------------------------------------------------------------
+
+- Source : idps.error_events.
+- Jour J : date UTC dérivée de event_timestamp (section 2).
+- Comptage : nombre de LIGNES (COUNT(*)), pas seulement des request_id distincts.
+  Même request_id peut donc contribuer plusieurs fois le même jour.
+- Filtres : error_category IN (QC_ERROR, SUP_ERROR, PERSO_ERROR) — les trois
+  sont les seules valeurs présentes en base actuellement.
+
+--------------------------------------------------------------------------------
+7. GRAIN GÉOGRAPHIQUE (API / DASHBOARD)
+--------------------------------------------------------------------------------
+
+Choix retenu (4a = option 3) :
+  - Agrégats nationaux (par jour J).
+  - Détail par destination_code (centre / point de destination).
+  - Enrichissement avec bi.locations (libellés région, préfecture, etc.) pour
+    les mêmes indicateurs, via jointure sur codes centre (ex. padding à 9
+    caractères comme dans le POC — à vérifier au moment de l'implémentation
+    si les formats destination_code / center_code divergent).
+
+--------------------------------------------------------------------------------
+8. REMPLACEMENT DU MODÈLE POC PRÉCÉDENT
+--------------------------------------------------------------------------------
+
+- Les scripts historiques 005 / 006 / 007 / 008 (vues « as-of », mapping
+  PENDING vs BACKLOG, etc.) ne constituent plus la référence pour ces KPI.
+- Toute nouvelle vue / MV / API devra suivre la présente spécification.
+
+--------------------------------------------------------------------------------
+9. VALIDATION SQL
+--------------------------------------------------------------------------------
+
+Voir : db-scripts/validate_idps_kpi_spec.sql
+  - Modifier la date dans le CTE params puis exécuter.
+  - Blocs E et F en commentaires : jointure bi.locations pour erreurs et workflow.
+
+--------------------------------------------------------------------------------
+10. POINTS EXPLICITEMENT ÉCARTÉS OU NON TRAITÉS ICI
+--------------------------------------------------------------------------------
+
+- Fuseau métier local : non — journée en UTC sur event_timestamp.
+- Rejeu / doublons de fichiers : non traité (hors périmètre actuel).
+- Tables : idps.workflow_events, idps.error_events, bi.locations (référence).
+
+================================================================================
+FIN DU DOCUMENT — reprise des discussions possibles à partir de ce fichier.
+================================================================================
